@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    <h1>Setting</h1>
+{% endblock %}
+
+{% block main %}
+    <form action="/setting" method="post">
+        <div class="form-group">
+            <select autocomplete="off" autofocus class="form-control" name="setting"/>
+                <option disable selected value = " ">Setting</option>
+                <option value = "password">password</option>
+                <option value = "cash">cash</option>
+            </select>
+        </div>
+
+        <button class="btn btn-primary" type="submit">Setting</button>
+    </form>
+{% endblock %}

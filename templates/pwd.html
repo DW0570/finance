@@ -1,0 +1,27 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Password setting
+{% endblock %}
+
+{% block main %}
+<h5>Password setting</h5>
+<p>
+
+</p>
+<p>
+
+</p>
+    <form action="/pwd" method="post">
+        <div class="form-group">
+            <input autocomplete="off" autofocus class="form-control" name="old_pwd" placeholder="Old_pwd" type="text"/>
+        </div>
+        <div class="form-group">
+            <input class="form-control" name="password" placeholder="Password" type="password"/>
+        </div>
+        <div class="form-group">
+            <input class="form-control" name="confirmation" placeholder="Confirm(password)" type="password"/>
+        </div>
+        <button class="btn btn-primary" type="submit">Setting</button>
+    </form>
+{% endblock %}
