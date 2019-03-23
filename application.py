@@ -3,9 +3,7 @@ import os
 from time import gmtime, strftime
 
 #from cs50 import SQL, eprint
-from sqlalchemy import create_engine
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import scoped_session, sessionmaker
 from flask import Flask, flash, redirect, render_template, request, session
 from flask_session import Session
 from tempfile import mkdtemp
@@ -33,7 +31,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 #Session(app)
 db = SQLAlchemy(app)
-db.init_app(app)
+#db.init_app(app)
 # Set up database
 # Ensure responses aren't cached
 
