@@ -15,8 +15,8 @@ from models import *
 from helpers import apology, login_required, lookup, usd
 
 # Ensure environment variable is set
-if not os.environ.get("API_KEY"):
-    raise RuntimeError("API_KEY not set")
+#if not os.environ.get("API_KEY"):
+    #raise RuntimeError("API_KEY not set")
 
 if not os.getenv("DATABASE_URL"):
     raise RuntimeError("DATABASE_URL is not set")
