@@ -2,25 +2,39 @@ import os
 
 from time import gmtime, strftime
 
-from cs50 import SQL, eprint
+#from cs50 import SQL, eprint
+from sqlalchemy import create_engine
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import scoped_session, sessionmaker
 from flask import Flask, flash, redirect, render_template, request, session
 from flask_session import Session
 from tempfile import mkdtemp
 from werkzeug.exceptions import default_exceptions
 from werkzeug.security import check_password_hash, generate_password_hash
-
+from models import *
 from helpers import apology, login_required, lookup, usd
 
 # Ensure environment variable is set
 if not os.environ.get("API_KEY"):
     raise RuntimeError("API_KEY not set")
 
+if not os.getenv("DATABASE_URL"):
+    raise RuntimeError("DATABASE_URL is not set")
+
 # Configure application
 app = Flask(__name__)
 
 # Ensure templates are auto-reloaded
 app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.config["SESSION_PERMANENT"] = False
+app.config["SESSION_TYPE"] = "filesystem"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+#Session(app)
+db = SQLAlchemy(app)
+db.init_app(app)
+# Set up database
 # Ensure responses aren't cached
 
 
@@ -36,14 +50,10 @@ def after_request(response):
 app.jinja_env.filters["usd"] = usd
 
 # Configure session to use filesystem (instead of signed cookies)
-app.config["SESSION_FILE_DIR"] = mkdtemp()
-app.config["SESSION_PERMANENT"] = False
-app.config["SESSION_TYPE"] = "filesystem"
-Session(app)
+
 
 # Configure CS50 Library to use SQLite database
-db = SQL("sqlite:///finance.db")
-
+#db = SQL("sqlite:///finance.db")
 
 @app.route("/pwd", methods=["GET", "POST"])
 @login_required
@@ -57,8 +67,8 @@ def pwd():
         if not pwd_0 or not pwd or not conf:
             return apology("provide old and new password and confirm new password")
             # select the old hashed password and compare it to the old password the user typed in
-        rows = db.execute("SELECT hash FROM users WHERE id = :id",
-                                                                id=session.get("user_id"))
+        #rows = db.execute("SELECT hash FROM users WHERE id = :id", id=session.get("user_id"))
+        rows = User.query.all()
         # compare password
         for row in rows:
             hashh = row["hash"]
@@ -68,7 +78,10 @@ def pwd():
         elif pwd != conf:
             return apology("passwords don't match")
         # everything is ready then update the password
-        db.execute("UPDATE users SET hash = :hah", hah=generate_password_hash(pwd))
+        #db.execute("UPDATE users SET hash = :hah", hah=generate_password_hash(pwd))
+        User.query.filter(User.pwd).all()
+        User.pwd = generate_password_hash
+        db.session.commit()
         return redirect("/")
     else:
         return render_template("pwd.html")
@@ -82,8 +95,10 @@ def add_cash():
         cash = int(request.form.get("cash"))
         if not cash or cash < 0:
             return apology("please provide a positive number!")
-        db.execute("UPDATE users SET cash = cash + :ca WHERE id = :id",
-                                            ca=cash, id=session.get("user_id"))
+        #db.execute("UPDATE users SET cash = cash + :ca WHERE id = :id", ca=cash, id=session.get("user_id"))
+        user = User.query.get(session.get("user_id"))
+        user.cash = user.cash + cash
+        db.session.commit()
         return redirect("/")
     else:
         return render_template("add_cash.html")
@@ -111,9 +126,12 @@ def setting():
 def index():
     """Show portfolio of stocks"""
     # select cash and transaction of detail that we want to show to users
-    cash = db.execute("SELECT cash FROM users WHERE id = :id", id=session.get("user_id"))
-    rows = db.execute("SELECT symbol, price, shares, total FROM summ WHERE userId = :id",
-                       id=session.get("user_id"))
+    user = User.query.get(session.get("user_id"))
+    cash = user.cash
+    db.session.commit()
+    rows = Symbol.query.filter_by(id=session.get("user_id")).all()
+    #cash = db.execute("SELECT cash FROM users WHERE id = :id", id=session.get("user_id"))
+    #rows = db.execute("SELECT symbol, price, shares, total FROM summ WHERE userId = :id", id=session.get("user_id"))
 
     total = 0
     for row in rows:
@@ -163,34 +181,46 @@ def buy():
                 # figure out how much money does the user cost to buy the stock
                 cash = price * shares
                 # select the current cash the user has
-                rows = db.execute("SELECT cash FROM users WHERE id = :id", id=session.get("user_id"))
+                rows = User.query.filter_by(id=session("user_id")).all()
+                #rows = db.execute("SELECT cash FROM users WHERE id = :id", id=session.get("user_id"))
                 for row in rows:
                     # check if the user could afford the exchange
                     if row["cash"] < cash:
                         return apology("sorry, couldn't afford it!")
                     else:
                         # reduce cash from user and add stock to the user's portfolio
-                        db.execute("UPDATE users SET cash = cash - :ca WHERE id = :id",
-                                    ca=price * shares, id = session.get("user_id"))
+                        user = User.query.get(session.get("user_id"))
+                        cash = user.cash - price * shares
+                        #db.execute("UPDATE users SET cash = cash - :ca WHERE id = :id",
+                                    #ca=price * shares, id = session.get("user_id"))
                         # get the date and time when the transaction occurs
                         time = strftime("%Y-%m-%d  %H:%M:%S ", gmtime())
                         # add stock to user's portfolio
-                        db.execute("INSERT INTO portfolio (userId, symbol, shares, price, time) VALUES(:id, :sy, :sh, :pr, :time)",
-                                                                        id = session.get("user_id"), sy=symbol, sh=shares, pr=price, time=time)
+                        portfolio = Portfolio(userId=session.get("user_id"), symbol=symbol, shanres=share, price=price, time=time)
+                        db.session.add(portfolio)
+                        #db.execute("INSERT INTO portfolio (userId, symbol, shares, price, time) VALUES(:id, :sy, :sh, :pr, :time)",
+                                                                        #id = session.get("user_id"), sy=symbol, sh=shares, pr=price, time=time)
                         # select the row in sql table(summ) where the stock belong to the current user and the symbol is get symbol("symbol")
-                        items = db.execute("SELECT userId, symbol FROM summ WHERE userId = :id AND symbol = :symbol",
-                                            id=session.get("user_id"), symbol=symbol)
+                        items = Summ.query.filter(and_(Summ.userId==session.get("user_id"), Summ.symbol==symbol))
+                        #items = db.execute("SELECT userId, symbol FROM summ WHERE userId = :id AND symbol = :symbol",
+                                            #id=session.get("user_id"), symbol=symbol)
                         # if that row dosen't exist then add it to table("summ")
                         if len(items) < 1:
-                            db.execute("INSERT INTO summ (userId, symbol, shares, price, total) VALUES(:id, :sy, :sh, :pr, :tot)", id=session.get("user_id"), sy=symbol, sh=shares, pr=price, tot=shares * price)
+                            summ = Summ(userId=session.get("user_id"), symbol=symbol, shares=shares, price=price, total=total)
+                            db.session.add(summ)
+                            #db.execute("INSERT INTO summ (userId, symbol, shares, price, total) VALUES(:id, :sy, :sh, :pr, :tot)", id=session.get("user_id"), sy=symbol, sh=shares, pr=price, tot=shares * price)
                         # if the row exists then just update "shares" and "total" in that row
                         else:
-                            db.execute("UPDATE summ SET shares = shares + :share WHERE symbol = :sy",
-                                        sy=symbol, share=shares)
-                            db.execute("UPDATE summ SET total = total + :tot WHERE symbol = :sy",
-                                        sy=symbol, tot=shares * price)
+                            symbol = Summ.query.filter_by(symbol=symbol).first()
+                            symbol.shares = symbol.shares + shares
+                            symbol.total = symbol.total + shares * price
+                            #db.execute("UPDATE summ SET shares = shares + :share WHERE symbol = :sy",
+                                        #sy=symbol, share=shares)
+                            #db.execute("UPDATE summ SET total = total + :tot WHERE symbol = :sy",
+                                        #sy=symbol, tot=shares * price)
 
                         # send user "index.html" where the page show him or her the summary of his or her transaction
+                        db.session.commit()
                         return redirect("/")
             else:
                 apology("positive integer only")
@@ -205,8 +235,9 @@ def buy():
 def history():
     """Show history of transactions"""
     # select all we want show to the user from table "portfolio"
-    rows = db.execute("SELECT symbol, shares, price, time FROM portfolio WHERE userId = :id",
-                        id=session.get("user_id"))
+    rows = Portfolio.query.filter_by(userId=session.get("user_id")).all()
+    #rows = db.execute("SELECT symbol, shares, price, time FROM portfolio WHERE userId = :id",
+                        #id=session.get("user_id"))
 
     return render_template("history.html", rows=rows)
 
@@ -230,8 +261,9 @@ def login():
             return apology("must provide password", 403)
 
         # Query database for username
-        rows = db.execute("SELECT * FROM users WHERE username = :username",
-                          username=request.form.get("username"))
+        rows = User.query.filter_by(username=request.form.get("username"))
+        #rows = db.execute("SELECT * FROM users WHERE username = :username",
+                          #username=request.form.get("username"))
 
         # Ensure username exists and password is correct
         if len(rows) != 1 or not check_password_hash(rows[0]["hash"], request.form.get("password")):
@@ -295,8 +327,11 @@ def register():
         # hash password
         hash_pwd = generate_password_hash(pwd)
         # try to insert user's name and hashed password into "users"(which is a sql table)
-        result = db.execute("INSERT INTO users (username,hash) VALUES(:username, :hash)",
-                            username=name, hash=hash_pwd)
+        #result = db.execute("INSERT INTO users (username,hash) VALUES(:username, :hash)",
+                            #username=name, hash=hash_pwd)
+        user = User(username=name, hash=hash_pwd, cash=10000)
+        db.session.add(user)
+        db.session.commit()
         # check if the username has already existed, if existed then do an apology
         if not result:
             return apology("Sorry the user name already exists!")
@@ -344,9 +379,9 @@ def sell():
                 # record the date and time when the transaction occurs
                 time = strftime("%Y-%m-%d  %H:%M:%S ", gmtime())
                 # select the row that the user has that contains the "symbol" via "GET"
-
-                items = db.execute("SELECT symbol, shares, price, total FROM summ WHERE userId = :id AND symbol = :sy",
-                                    id=session.get("user_id"), sy=symbol)
+                itmes = Summ.query.filter_by(_and(userId==session.get("user_id"), symbol==symbol))
+                #items = db.execute("SELECT symbol, shares, price, total FROM summ WHERE userId = :id AND symbol = :sy",
+                                    #id=session.get("user_id"), sy=symbol)
                 if len(items) != 1:
                     return apology("don't have this stock")
                 else:
@@ -358,32 +393,48 @@ def sell():
                         elif shares < item["shares"]:
 
                             # insert the transaction into the user's portfolio
-                            db.execute("INSERT INTO portfolio (symbol, shares, price, time, userId) VALUES(:sy, :sh, :pr, :time, :id)",
-                                        sy=symbol, sh=-shares, pr=price, time=time, id=session.get("user_id"))
+                            portfolio = Portfolio(symbol=symbol, shares=-shares, price=price, time=time, userId=session.get("user_id"))
+                            db.session.add(portfolio)
+                            #db.execute("INSERT INTO portfolio (symbol, shares, price, time, userId) VALUES(:sy, :sh, :pr, :time, :id)",
+                                        #sy=symbol, sh=-shares, pr=price, time=time, id=session.get("user_id"))
                             # update the cash the user has
-                            db.execute("UPDATE users SET cash = cash + :ca WHERE id = :id",
-                                        ca = cash, id = session.get("user_id"))
+                            user = User.query(session.get("user_id"))
+                            user.cash = user.cash + cash
+                            #db.execute("UPDATE users SET cash = cash + :ca WHERE id = :id",
+                                        #ca = cash, id = session.get("user_id"))
                             # update the total and shares of that symbol
-                            db.execute("UPDATE summ SET shares = shares - :sh WHERE symbol = :sy",
-                                        sh = shares, sy = symbol)
-                            db.execute("UPDATE summ SET total = total - :tot WHERE symbol = :sy",
-                                        tot = shares * price, sy = symbol)
+                            summ = Summ.query.filter_by(symbol=symbol)
+                            summ.shares = summ.shares - shanres
+                            summ.total = summ.total - shares * price
+                            db.session.commit()
+                            #db.execute("UPDATE summ SET shares = shares - :sh WHERE symbol = :sy",
+                                        #sh = shares, sy = symbol)
+                            #db.execute("UPDATE summ SET total = total - :tot WHERE symbol = :sy",
+                                        #tot = shares * price, sy = symbol)
                         # if the user sell all the stock of the same symbol then delete it from the table "summ" and also update the data in sql tables
                         elif shares == item["shares"]:
-                            db.execute("INSERT INTO portfolio (symbol, shares, price, time, userId) VALUES(:sy, :sh, :pr, :time, :id)",
-                                        sy=symbol, sh=-shares, pr=price, time=time, id=session.get("user_id"))
-                            db.execute("UPDATE users SET cash = cash + :ca WHERE id = :id",
-                                        ca=cash, id=session.get("user_id"))
-                            db.execute("DELETE FROM summ WHERE userId = :id AND symbol = :sy",
-                                        id = session.get("user_id"), sy=symbol)
+                            portfolio = Portfolio(symbol=symbol, shares=-shares, price=price, time=time, userId=session.get("user_id"))
+                            db.session.add(portfolio)
+                            #db.execute("INSERT INTO portfolio (symbol, shares, price, time, userId) VALUES(:sy, :sh, :pr, :time, :id)",
+                                        #sy=symbol, sh=-shares, pr=price, time=time, id=session.get("user_id"))
+                            user = User.query(session.get("user_id"))
+                            user.cash = user.cash + cash
+                            #db.execute("UPDATE users SET cash = cash + :ca WHERE id = :id",
+                                        #ca=cash, id=session.get("user_id"))
+                            summ = Summ.query.filter_by(_and(userId==session.get("user_id"), symbol==symbol)).all()
+                            db.session.delete(summ)
+                            db.session.commit()
+                            #db.execute("DELETE FROM summ WHERE userId = :id AND symbol = :sy",
+                                        #id = session.get("user_id"), sy=symbol)
                         return redirect("/")
             else:
                 apology("positive integer only")
         else:
             return apology("positive integer only")
     else:
-        rows = db.execute("SELECT symbol FROM summ WHERE userId = :id",
-                            id=session.get("user_id"))
+        rows = Summ.query.filter_by(userId=session.get("user_id")).all()
+        #rows = db.execute("SELECT symbol FROM summ WHERE userId = :id",
+                            #id=session.get("user_id"))
         if len(rows) < 1:
             return apology("nothing to sell")
         else:
